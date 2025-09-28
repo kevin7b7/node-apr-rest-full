@@ -1,4 +1,7 @@
 import { Request, Response } from "express";
+import { prisma } from "../../data/postgres";
+import { CreateTodoDto, UpdateTodoDto } from "../../domain";
+
 
 interface Todo {
     id: number,
@@ -18,76 +21,75 @@ export class TodosController {
     constructor() { }
 
 
-    public getTodos = (req: Request, res: Response) => {
+    public getTodos = async(req: Request, res: Response) => {
+
+        const todos = await prisma.todo.findMany();
 
         return res.json(todos)
 
     }
 
-    public getById = (req: Request, res: Response) => {
+    public getById = async(req: Request, res: Response) => {
 
         const id = +req.params.id;
         if (isNaN(id)) return res.status(400).json({ error: 'ID argument is not a number' });
 
-        const todo = todos.find(todo => todo.id === id);
+
+        const todo = await prisma.todo.findFirst({
+            where: { id }
+        });
+        
         return (todo)
             ? res.json(todo)
             : res.status(404).json({ error: `TODO with id ${id} not found ` })
 
     }
 
-    public create = (req: Request, res: Response) => {
-        const todo: Todo = req.body;
-        if (!todo.text) return res.status(400).json({ error: 'Text property is required' });
-        const newTodo: Todo = {
-            id: todos.length + 1,
-            text: todo.text,
-            completedAt: null
-        }
+    public create = async(req: Request, res: Response) => {
 
-        todos.push(newTodo);
-        return res.json(todos);
+        const [error, createTodoDto] = CreateTodoDto.create( req.body );
+        if ( error ) return res.status( 400 ).json( { error } );
+
+        const todo = await prisma.todo.create({ data:createTodoDto  });
+        
+        return res.json(todo);
 
     }
 
-    public update = ( req: Request, res: Response ) => {
+    public update = async( req: Request, res: Response ) => {
 
         const id = +req.params.id;
-        if (isNaN(id)) return res.status(400).json({ error: 'ID argument is not a number' });
 
-        const todo = todos.find( todo => todo.id === id );
-        if( !todo ) return res.status( 404 ).json({ error: 'Todo does not exist' });
+        const [error, updateTodoDto] = UpdateTodoDto.update({...req.body, id});
+        if( error ) return res.status(400).json({ error });
 
-        const { text, completedAt } = req.body;
-
-        todo.text = text || todo.text;
-        ( completedAt  === 'null')
-        ? todo.completedAt = null
-        : todo.completedAt = new Date( completedAt || todo.completedAt )
+         const todoDb = await prisma.todo.findFirst({
+            where: { id }
+        });
+        if( !todoDb ) return res.status( 404 ).json({ error: 'Todo does not exist' });
 
 
-        res.json( todo );
+        const todoUpdated = await prisma.todo.update({
+            where: { id },
+            data: updateTodoDto.values
+        })
+
+        res.json( todoUpdated );
 
     }
 
-    public delete = ( req: Request, res: Response ) => {
+    public delete = async( req: Request, res: Response ) => {
 
         const id = +req.params.id;
         if( isNaN(id) ) return res.status( 400 ).json({ error: 'ID argument is not a number'});
 
-        const todo = todos.find( todo => todo.id === id );
-        if( !todo ) return res.status( 404 ).json({ error: 'Todo does not exist' });
+        const deleted = await prisma.todo.delete({ 
+            where: { id }
+         });
 
-        const index = todos.findIndex( todo => todo.id === id );
-
-        if( index !== -1 ){
-            todos.splice(index,1);
-            return res.json(todo);
-        }
+         ( deleted )
+            ? res.json(deleted)
+            : res.status(400).json( { error: 'Todo does not exist' } );
         
-
-
-
-
     }
 }
